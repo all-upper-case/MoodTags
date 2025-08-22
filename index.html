@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mood Tags — Josie & Tai</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script defer src="script.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Mood Tags</h1>
+    <button id="configBtn" class="secondary">Config</button>
+  </header>
+
+  <section id="roomSection" class="card">
+    <h2>Room</h2>
+    <div class="row">
+      <label>Room ID</label>
+      <input id="roomId" placeholder="e.g., gwas-app-1234" />
+    </div>
+    <div class="row">
+      <label>Your name</label>
+      <input id="userName" placeholder="Josie or Tai" />
+    </div>
+    <button id="joinBtn">Join room</button>
+    <p class="hint">Tip: use an unguessable Room ID and share it privately.</p>
+  </section>
+
+  <section id="tagsSection" class="card hidden">
+    <h2>Your mood board</h2>
+
+    <div class="row tight">
+      <label>Target subreddit</label>
+      <input id="subreddit" value="GWASapphic" />
+    </div>
+
+    <div class="row wrap gap">
+      <div class="pill legend required">Required</div>
+      <div class="pill legend optional">Optional</div>
+      <div class="pill legend excluded">Excluded</div>
+    </div>
+
+    <div class="picker-mode row">
+      <span>Tap preset to add as:</span>
+      <select id="pickerMode">
+        <option value="required">Required (AND)</option>
+        <option value="optional">Optional (OR group)</option>
+        <option value="excluded">Excluded (NOT)</option>
+      </select>
+    </div>
+
+    <div class="presets">
+      <h3>Presets</h3>
+      <div id="presetContainer" class="chips"></div>
+    </div>
+
+    <div class="custom row">
+      <input id="customTag" placeholder="Add custom tag and press Enter" />
+      <select id="customBucket">
+        <option value="required">→ Required</option>
+        <option value="optional">→ Optional</option>
+        <option value="excluded">→ Excluded</option>
+      </select>
+      <button id="addCustom">Add</button>
+    </div>
+
+    <div class="columns">
+      <div>
+        <h3>Required</h3>
+        <div id="requiredList" class="chips edit"></div>
+      </div>
+      <div>
+        <h3>Optional</h3>
+        <div id="optionalList" class="chips edit"></div>
+      </div>
+      <div>
+        <h3>Excluded</h3>
+        <div id="excludedList" class="chips edit"></div>
+      </div>
+    </div>
+
+    <div class="options row wrap gap">
+      <div>
+        <label>Sort</label>
+        <select id="sort">
+          <option value="new">new</option>
+          <option value="relevance">relevance</option>
+          <option value="top">top</option>
+          <option value="comments">comments</option>
+        </select>
+      </div>
+      <div>
+        <label>Time</label>
+        <select id="time">
+          <option value="day">day</option>
+          <option value="week" selected>week</option>
+          <option value="month">month</option>
+          <option value="year">year</option>
+          <option value="all">all</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="cta">
+      <button id="openReddit" class="primary">Open results on Reddit</button>
+      <button id="copyLink" class="secondary">Copy search link</button>
+    </div>
+    <p class="hint">Make sure Reddit account settings allow mature results, or search will look empty.</p>
+  </section>
+
+  <section id="partnerSection" class="card hidden">
+    <h2>The other person's current mood</h2>
+    <div id="partnerStatus" class="muted">— not connected yet —</div>
+    <div class="columns">
+      <div>
+        <h3>Required</h3>
+        <div id="p_required" class="chips"></div>
+      </div>
+      <div>
+        <h3>Optional</h3>
+        <div id="p_optional" class="chips"></div>
+      </div>
+      <div>
+        <h3>Excluded</h3>
+        <div id="p_excluded" class="chips"></div>
+      </div>
+    </div>
+  </section>
+
+  <dialog id="configDialog">
+    <form method="dialog">
+      <h2>Setup</h2>
+      <p>Paste your Supabase URL and anon key. These are stored locally on this device only.</p>
+      <div class="row">
+        <label>Supabase URL</label>
+        <input id="sbUrl" placeholder="https://YOUR-PROJECT.supabase.co" />
+      </div>
+      <div class="row">
+        <label>Supabase anon key</label>
+        <input id="sbKey" placeholder="eyJhbGciOi..." />
+      </div>
+      <menu>
+        <button value="cancel">Cancel</button>
+        <button id="saveConfig" value="default">Save</button>
+      </menu>
+      <p class="hint">You can change this later via the Config button.</p>
+    </form>
+  </dialog>
+
+  <footer>
+    <small>Built for Josie & Tai • No data about Reddit posts is stored, only your current tag choices.</small>
+  </footer>
+</body>
+</html>
