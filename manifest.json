@@ -1,0 +1,11 @@
+{
+  "name": "Mood Tags — Josie & Tai",
+  "short_name": "MoodTags",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#0f1216",
+  "theme_color": "#0f1216",
+  "description": "Pick moods together, open Reddit results in one tap.",
+  "icons": []
+}
