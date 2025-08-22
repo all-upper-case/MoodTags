@@ -1,112 +1,156 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MoodTags • Sapphic</title>
+  <title>Mood Tags — Josie & Tai</title>
 
-  <!-- PWA: leave these as-is if you already had them -->
-  <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#111111"/>
+  <!-- PWA -->
+  <meta name="theme-color" content="#0f1216" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="data:," />
 
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script defer src="script.js"></script>
+  <script>
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
+    }
+  </script>
 </head>
 <body>
-  <header class="topbar">
-    <h1>mood tags • sapphic</h1>
-    <div class="install-wrapper">
-      <button id="installBtn" class="secondary" hidden>Install app</button>
-    </div>
+  <header>
+    <h1>Mood Tags • sapphic</h1>
+    <button id="configBtn" class="secondary">Config</button>
   </header>
 
-  <main class="container">
-    <section class="panel">
-      <h2>Room & identity</h2>
-      <div class="grid-2">
-        <label class="block">
-          <span>Room ID</span>
-          <input id="roomId" placeholder="e.g. tai-josie" />
-        </label>
-        <label class="block">
-          <span>Your name</span>
-          <input id="userName" placeholder="e.g. Josie" />
-        </label>
+  <section class="card">
+    <h2>Room & identity</h2>
+    <div class="row">
+      <label>Room ID</label>
+      <input id="roomId" placeholder="e.g., josie-tai-66e391" />
+    </div>
+    <div class="row">
+      <label>Your name</label>
+      <input id="userName" placeholder="Josie or Tai" />
+    </div>
+    <button id="joinBtn">Connect</button>
+    <p class="hint" id="connState"></p>
+  </section>
+
+  <section class="card">
+    <h2>Subreddits</h2>
+    <p class="hint">Pick one or more. You can also add your own.</p>
+    <div id="subredditList" class="chips"></div>
+    <div class="custom row">
+      <input id="customSub" placeholder="Add subreddit, e.g., GWASapphic" />
+      <button id="addSubBtn" class="secondary">Add</button>
+    </div>
+  </section>
+
+  <section class="card" id="tagsSection">
+    <h2>Tags</h2>
+    <p class="hint">Tap a tag to cycle: <span class="pill legend required">required</span> → <span class="pill legend optional">optional</span> → <span class="pill legend excluded">excluded</span> → off.</p>
+
+    <div id="categories"></div>
+  </section>
+
+  <section class="card">
+    <h2>Selected</h2>
+    <div class="columns">
+      <div>
+        <h3>Required</h3>
+        <div id="requiredList" class="chips edit"></div>
       </div>
-      <button id="connectBtn">Connect</button>
-      <p id="connState" class="muted"></p>
-    </section>
-
-    <section class="panel">
-      <h2>Subreddits</h2>
-      <p class="muted">Pick one or more. You can also add your own.</p>
-      <div id="subredditList" class="sub-grid"></div>
-
-      <div class="add-row">
-        <input id="customSub" placeholder="Add subreddit, e.g. GWASapphic" />
-        <button id="addSubBtn" class="secondary">Add</button>
+      <div>
+        <h3>Optional</h3>
+        <div id="optionalList" class="chips edit"></div>
       </div>
-    </section>
-
-    <section class="panel">
-      <h2>Tags</h2>
-      <p class="muted">Tap a tag to cycle: <span class="pill required">required</span> → <span class="pill optional">optional</span> → <span class="pill excluded">excluded</span> → off.</p>
-
-      <div id="categories"></div>
-    </section>
-
-    <section class="panel">
-      <h2>Selected</h2>
-      <div class="selected-wrap">
-        <div>
-          <h3>Required</h3>
-          <div id="reqList" class="chips"></div>
-        </div>
-        <div>
-          <h3>Optional</h3>
-          <div id="optList" class="chips"></div>
-        </div>
-        <div>
-          <h3>Excluded</h3>
-          <div id="exList" class="chips"></div>
-        </div>
+      <div>
+        <h3>Excluded</h3>
+        <div id="excludedList" class="chips edit"></div>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <section class="panel">
-      <h2>Search</h2>
-      <div class="grid-2">
-        <label class="block">
-          <span>Sort</span>
-          <select id="sortSel">
-            <option value="new">New</option>
-            <option value="relevance">Relevance</option>
-            <option value="top">Top</option>
-            <option value="comments">Comments</option>
-          </select>
-        </label>
-        <label class="block">
-          <span>Time range</span>
-          <select id="timeSel">
-            <option value="all">All time</option>
-            <option value="year">Past year</option>
-            <option value="month">Past month</option>
-            <option value="week">Past week</option>
-            <option value="day">Past day</option>
-            <option value="hour">Past hour</option>
-          </select>
-        </label>
+  <section class="card">
+    <h2>Search</h2>
+    <div class="options row wrap gap">
+      <div>
+        <label>Sort</label>
+        <select id="sort">
+          <option value="new">new</option>
+          <option value="relevance">relevance</option>
+          <option value="top">top</option>
+          <option value="comments">comments</option>
+        </select>
       </div>
+      <div>
+        <label>Time</label>
+        <select id="time">
+          <option value="all">all</option>
+          <option value="year">year</option>
+          <option value="month">month</option>
+          <option value="week" selected>week</option>
+          <option value="day">day</option>
+          <option value="hour">hour</option>
+        </select>
+      </div>
+    </div>
 
-      <button id="openCombined">Open combined results</button>
-      <div id="linkList" class="links"></div>
-      <p class="muted small">Combined search opens <code>/r/subA+subB/search</code> with your tag logic. If anything acts weird, use the individual links below.</p>
-    </section>
-  </main>
+    <div class="cta">
+      <button id="openCombined" class="primary">Open combined results</button>
+      <button id="copyCombined" class="secondary">Copy combined link</button>
+    </div>
+    <div id="linkList" class="links"></div>
+    <p class="hint">Combined search opens <code>/r/subA+subB/search</code> with your tag logic.</p>
+  </section>
 
-  <footer class="muted center small">
-    Built with ❤️ for Josie & Tai. Live-sync via Supabase.
+  <section class="card">
+    <h2>The other person's current mood</h2>
+    <div id="partnerStatus" class="muted">— not connected yet —</div>
+    <div class="columns">
+      <div>
+        <h3>Required</h3>
+        <div id="p_required" class="chips"></div>
+      </div>
+      <div>
+        <h3>Optional</h3>
+        <div id="p_optional" class="chips"></div>
+      </div>
+      <div>
+        <h3>Excluded</h3>
+        <div id="p_excluded" class="chips"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Config Modal -->
+  <dialog id="configDialog">
+    <form method="dialog">
+      <h2>Setup</h2>
+      <p>Paste your Supabase URL and anon key. Stored locally on this device only.</p>
+      <div class="row">
+        <label>Supabase URL</label>
+        <input id="sbUrl" placeholder="https://YOUR-PROJECT.supabase.co" />
+      </div>
+      <div class="row">
+        <label>Supabase anon key</label>
+        <input id="sbKey" placeholder="eyJhbGciOi..." />
+      </div>
+      <menu>
+        <button value="cancel">Cancel</button>
+        <button id="saveConfig" value="default">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <footer>
+    <small>Built for Josie & Tai • No Reddit posts are stored, only your current tag choices.</small>
   </footer>
-
-  <script type="module" src="/script.js"></script>
 </body>
 </html>
