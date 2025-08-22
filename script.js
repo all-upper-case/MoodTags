@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const uniq = (arr) => Array.from(new Set(arr.map(s => s.trim()).filter(Boolean)));
 const sortAlpha = (a) => a.slice().sort((x,y)=>x.localeCompare(y, undefined, {sensitivity:"base"}));
+const esc = (s) => (s||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function quote(tag){ const t = tag.replace(/"/g,'\\"').trim(); return /\s/.test(t) ? `"${t}"` : `"${t}"`; }
 
 // Build Reddit query using title keywords
@@ -28,8 +29,14 @@ function buildSingleUrl(sr, q, sort, t){
   return `${base}?${p.toString()}`;
 }
 
-// ===== Preset subs =====
-const DEFAULT_SUBS = ["GWASapphic","DarkSideSapphic","SapphicScriptGuild"];
+// ===== Preset subs (added a few generals too; you can uncheck them) =====
+const DEFAULT_SUBS = [
+  "GWASapphic",        // sapphic audio
+  "DarkSideSapphic",   // sapphic dark content
+  "SapphicScriptGuild",// sapphic scripts
+  "GoneWildAudio",     // general audio (not sapphic-only)
+  "ScriptGuild"        // general scripts (not sapphic-only)
+];
 
 // ===== Categories =====
 const TAG_CATEGORIES = {
@@ -76,8 +83,10 @@ const state = {
     time: "week"
   },
   subs: new Set(DEFAULT_SUBS),
+  saved: [],         // <— saved posts for the room
   partner: null,
-  sb: null
+  sb: null,
+  channels: []
 };
 
 // ===== Supabase =====
@@ -107,7 +116,68 @@ async function persist(){
   await sb.from("selections").upsert(payload, { onConflict: "room_id,user_name" });
 }
 
-// ===== UI: renderers =====
+// ===== Saved posts (CRUD) =====
+async function loadSaved(){
+  const sb = await ensureSupabase();
+  if (!sb || !state.roomId) return;
+  const { data } = await sb.from("saved_links")
+    .select("*")
+    .eq("room_id", state.roomId)
+    .order("created_at", { ascending: false });
+  state.saved = data || [];
+  renderSaved();
+}
+async function addSaved(){
+  const url = $("saveUrl").value.trim();
+  const title = $("saveTitle").value.trim();
+  if (!/^https?:\/\//i.test(url)) { alert("Please paste a full https:// link."); return; }
+  const sb = await ensureSupabase();
+  if (!sb || !state.roomId || !state.userName) { alert("Connect to a room first."); return; }
+  const payload = { room_id: state.roomId, user_name: state.userName, url, title: title || null };
+  const { error } = await sb.from("saved_links").insert(payload);
+  if (error && !/duplicate key/i.test(String(error.message))) { alert("Could not save link."); return; }
+  $("saveUrl").value = ""; $("saveTitle").value = "";
+  // Re-load (realtime will also kick in)
+  loadSaved();
+}
+async function deleteSaved(id){
+  const sb = await ensureSupabase();
+  if (!sb) return;
+  await sb.from("saved_links").delete().eq("id", id);
+}
+function renderSaved(){
+  const list = $("savedList");
+  list.innerHTML = "";
+  if (!state.saved.length){
+    list.innerHTML = `<div class="muted">No saved posts yet.</div>`;
+    return;
+  }
+  state.saved.forEach(row=>{
+    const item = document.createElement("div");
+    item.className = "saved-item";
+
+    const main = document.createElement("div");
+    main.className = "saved-main";
+    const a = document.createElement("a");
+    a.href = row.url; a.target = "_blank"; a.rel = "noopener";
+    a.innerHTML = esc(row.title || row.url);
+    const meta = document.createElement("div");
+    meta.className = "saved-meta";
+    meta.textContent = `by ${row.user_name} • ${new Date(row.created_at).toLocaleString()}`;
+    main.appendChild(a); main.appendChild(meta);
+
+    const del = document.createElement("button");
+    del.className = "danger";
+    del.textContent = "Remove";
+    del.addEventListener("click", ()=>deleteSaved(row.id));
+
+    item.appendChild(main);
+    item.appendChild(del);
+    list.appendChild(item);
+  });
+}
+
+// ===== UI: subs, categories, lists =====
 function renderSubs(){
   const list = $("subredditList");
   list.innerHTML = "";
@@ -126,7 +196,6 @@ function renderSubs(){
     list.appendChild(el);
   });
 }
-
 function renderCategories(){
   const container = $("categories");
   container.innerHTML = "";
@@ -139,15 +208,14 @@ function renderCategories(){
       const btn = document.createElement("button");
       btn.className = "tag " + whichBucket(tag);
       btn.textContent = tag;
-      btn.dataset.tag = tag;                // stable identity
-      btn.addEventListener("click", ()=>cycleTag(tag, btn)); // pass the button itself
+      btn.dataset.tag = tag;
+      btn.addEventListener("click", ()=>cycleTag(tag, btn));
       wrap.appendChild(btn);
     });
     sec.appendChild(wrap);
     container.appendChild(sec);
   });
 }
-
 function renderLists(){
   const render = (id, arr) => {
     const node = $(id); node.innerHTML = "";
@@ -168,6 +236,7 @@ function renderLists(){
   render("excludedList", state.selections.excluded);
 }
 
+// ===== Partner view =====
 function renderPartner(){
   const st = $("partnerStatus");
   if (!state.partner){ st.textContent = "— not connected yet —";
@@ -189,15 +258,12 @@ function whichBucket(tag){
   return "";
 }
 function cycleTag(tag, btnEl){
-  // capture current state BEFORE removing
-  const cur = whichBucket(tag);
+  const cur = whichBucket(tag); // capture before removing
 
-  // remove everywhere
   ["required","optional","excluded"].forEach(k=>{
     state.selections[k] = state.selections[k].filter(t => t !== tag);
   });
 
-  // next state
   let next = "required";
   if (cur==="required") next="optional";
   else if (cur==="optional") next="excluded";
@@ -205,7 +271,6 @@ function cycleTag(tag, btnEl){
 
   if (next) state.selections[next] = uniq([...state.selections[next], tag]);
 
-  // update just this button (no brittle text matching)
   if (btnEl){
     btnEl.classList.remove("required","optional","excluded");
     if (next) btnEl.classList.add(next);
@@ -215,18 +280,17 @@ function cycleTag(tag, btnEl){
   persist();
   renderSearchLinks();
 }
-
 function removeTag(tag){
   ["required","optional","excluded"].forEach(k=>{
     state.selections[k] = state.selections[k].filter(t => t !== tag);
   });
   renderLists();
-  renderCategories();   // refresh category chip colors
+  renderCategories();
   persist();
   renderSearchLinks();
 }
 
-// ===== Search links (no timeNote dependency) =====
+// ===== Search links =====
 function renderSearchLinks(){
   const q = buildQuery(state.selections);
   const sort = $("sort").value;
@@ -260,20 +324,35 @@ async function joinRoom(){
   const sb = await ensureSupabase();
   if (!sb){ $("connState").textContent = "Open Config and paste Supabase URL & anon key."; return; }
 
-  sb.channel(`room:${state.roomId}`)
+  // clean old channels
+  state.channels.forEach(ch => sb.removeChannel(ch));
+  state.channels = [];
+
+  // selections realtime (partner mood)
+  const ch1 = sb.channel(`room:${state.roomId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "selections", filter: `room_id=eq.${state.roomId}` },
       (payload)=>{
         const row = payload.new;
         if (!row || row.user_name === state.userName) return;
         state.partner = row; renderPartner();
       })
-    .subscribe((s)=> $("connState").textContent = (s==="SUBSCRIBED" ? `Connected as ${state.userName}.` : `Status: ${s}`));
+    .subscribe();
+  state.channels.push(ch1);
 
+  // saved links realtime
+  const ch2 = sb.channel(`saved:${state.roomId}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "saved_links", filter: `room_id=eq.${state.roomId}` },
+      ()=> loadSaved())
+    .subscribe();
+  state.channels.push(ch2);
+
+  // initial loads
   const { data } = await sb.from("selections").select("*").eq("room_id", state.roomId);
-  if (data) {
-    const partnerRow = data.find(r => r.user_name !== state.userName) || null;
-    state.partner = partnerRow; renderPartner();
-  }
+  state.partner = data ? data.find(r => r.user_name !== state.userName) || null : null;
+  renderPartner();
+  await loadSaved();
+
+  $("connState").textContent = `Connected as ${state.userName}.`;
   persist();
 }
 
@@ -300,6 +379,11 @@ window.addEventListener("DOMContentLoaded", ()=>{
     }
   });
 
+  // Saved posts actions
+  $("saveBtn").addEventListener("click", addSaved);
+  $("saveUrl").addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ e.preventDefault(); addSaved(); }});
+  $("saveTitle").addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ e.preventDefault(); addSaved(); }});
+
   renderSubs();
   $("addSubBtn").addEventListener("click", ()=>{
     const raw = $("customSub").value.trim().replace(/^r\//i,"");
@@ -311,7 +395,6 @@ window.addEventListener("DOMContentLoaded", ()=>{
 
   renderCategories();
   renderLists();
-
   ["sort","time"].forEach(id=> $(id).addEventListener("change", ()=>renderSearchLinks()));
   renderSearchLinks();
 
