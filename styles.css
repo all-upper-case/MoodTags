@@ -12,6 +12,7 @@ label { color: #aeb4bd; font-size: 14px; }
 input, select, button { padding: 10px; border-radius: 8px; border: 1px solid #2c3138; background: #0f1216; color: #e6e6e6; }
 button.primary { background: #2a7af0; border-color: #2a7af0; }
 button.secondary { background: #1a1f26; }
+button.danger { background: #341b1f; border-color: #5a2b31; color: #ff9999; }
 button { cursor: pointer; }
 .hint { color: #9aa2ad; font-size: 12px; }
 .muted { color: #7a828d; }
@@ -35,3 +36,9 @@ button { cursor: pointer; }
 
 .links { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .links a { color: #d3d3ff; text-decoration: none; }
+
+/* Saved posts list */
+.saved-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.saved-item { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; background: #10141a; border: 1px solid #2c3138; padding: 10px; border-radius: 8px; }
+.saved-main a { color: #d3d3ff; text-decoration: none; font-weight: 600; }
+.saved-meta { color: #9aa2ad; font-size: 12px; margin-top: 2px; }
