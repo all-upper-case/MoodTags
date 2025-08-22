@@ -38,29 +38,55 @@ const DEFAULT_SUBS = [
 // ===== Categories (presets) =====
 const TAG_CATEGORIES = {
   "Actions": [
-    "kissing","cuddling","spooning","making out","oral","fingering","tribbing",
-    "handholding","strapping on","dirty talk","edging","teasing","overstimulation"
+    "aftercare","anal play","bath","bite marks","breast play","cuddling","cunnilingus","dirty talk",
+    "double-ended toy","edging","face sitting","fingering","grinding","handholding","hair washing",
+    "hickey giving","kissing","lap dance","makeup removal","marking","massage","morning sex",
+    "mutual masturbation","nighttime comfort","nipple play","oral","pillow talk","phone call",
+    "remote toy control","rimming","roleplay","script fill","sexting","shower","sleeping together",
+    "sound effects","spooning","strapping on","teasing","tease & denial","toys","tribbing",
+    "video call","voicemail","vibrator control"
   ],
+
   "Dynamics": [
-    "gentle","soft","slow burn","rough","praise","degradation (consensual)","brat","brat tamer",
-    "domme","sub","switch","service top","mommy","good girl","tease & denial"
+    "brat","brat tamer","butch4butch","butch4femme","caregiver","comforting","domme","femme4femme",
+    "friends-with-benefits","gentle","good girl","lovesick","mean domme","mommy","needy","pillow princess",
+    "possessive","praise","princess","protective","service bottom","service top","soft domme",
+    "soft","stone butch","stone top","sub","switch","tease & denial","tsundere","yandere"
   ],
+
   "Mood / Aesthetic": [
-    "romantic","comfort","sleepy","cozy","cute","angsty","GFE","soothing","playful","needy",
-    "filthy","intense","monster romance","succubus","vampire","witchy"
+    "angsty","bookstore date","camping","coffee shop","cozy","cottagecore","cute","cyberpunk","dark academia",
+    "domestic","fantasy","filthy","gothic","GFE","gym vibes","Halloween","healing","holiday","hotel",
+    "intense","locker room","monster romance","morning wake-up","movie night","needy","New Year’s kiss",
+    "occult-lite","playful","rainy day","retro 90s","road trip nights","romantic","sci-fi","sleepy",
+    "soothing","spa day","stargazing","stormy night","summer beach","tender","thanksgiving","wholesome",
+    "witchy"
   ],
+
   "Scenarios": [
-    "girlfriends","friends to lovers","roommates","coworkers","neighbours","gym crush",
-    "first time","reunion","aftercare","massage","bath","shower","phone call","voicemail",
-    "roleplay","nurse","professor","maid","barista","club","hotel"
+    "anniversary","apartment tour","barista","bartender","birthday surprise","boss & employee","classmates",
+    "club","comfort after a bad day","convention hotel","coworkers","D&D night","enemies to lovers",
+    "festival camping","first time","friends to lovers","gamer girlfriends","girlfriends","gym crush",
+    "hair stylist","honeymoon","hotel","karaoke","kitchen makeout","library","maid","massage","movie night",
+    "moving day","nail tech","neighbours","nurse","office hours","piercer","professor & TA","reunion",
+    "road trip","roommates","second chance","shower","sick day caretaking","sleepover","snowed in",
+    "stuck elevator","study break","study date","tattoo artist","thunderstorm cuddles","yoga class"
   ],
-  "Kinks (consensual-only)": [
-    "bondage","blindfold","handcuffs","spanking","hair pulling","collar",
-    "orgasm control","mutual masturbation","marking","bite marks","public risk","exhibitionism",
-    "voyeur","humiliation (consensual)"
+
+  "Kinks": [
+    "anal play","bite marks","blindfold","bondage","butt plug","collar","double-ended toy","edging",
+    "exhibitionism","face sitting","foot worship","hair pulling","handcuffs","heels","humiliation","latex",
+    "leash","lingerie","light bondage","marking","mirror play","mutual masturbation","orgasm control",
+    "overstimulation","petplay","praise","rope","scratching","sensory deprivation","shibari","size difference",
+    "spanking","stockings","strap-on riding","temperature play","thigh riding","toy play","vibrator play",
+    "voice kink","voyeur","wand play"
   ],
+
   "Format / Meta": [
-    "script fill","improv","ramble","loop","ASMR","soundgasm link","sound effects"
+    "accent: Aussie","accent: British","accent: Southern US","alt endings","ASMR","binaural","collab",
+    "consent check","director’s cut","duet","fansly link","improv","light music","loop","no music",
+    "no talking","one-shot","patreon link","ramble","re-upload","remaster","script fill","script link",
+    "script offer","series part 1","sound effects","soundgasm link","SFW","timestamped tags"
   ]
 };
 
