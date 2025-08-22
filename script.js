@@ -15,14 +15,13 @@ function buildQuery({ required=[], optional=[], excluded=[] }){
   return parts.join(" ");
 }
 
-// Combined multireddit URL
+// Multireddit + single-subreddit URLs
 function buildCombinedUrl(subs, q, sort, t){
   const multi = subs.join("+");
   const base = `https://www.reddit.com/r/${multi}/search`;
   const p = new URLSearchParams({ q, restrict_sr: "on", sort, t });
   return `${base}?${p.toString()}`;
 }
-// Single subreddit URL
 function buildSingleUrl(sr, q, sort, t){
   const base = `https://www.reddit.com/r/${sr}/search`;
   const p = new URLSearchParams({ q, restrict_sr: "on", sort, t });
@@ -127,6 +126,7 @@ function renderSubs(){
     list.appendChild(el);
   });
 }
+
 function renderCategories(){
   const container = $("categories");
   container.innerHTML = "";
@@ -139,13 +139,15 @@ function renderCategories(){
       const btn = document.createElement("button");
       btn.className = "tag " + whichBucket(tag);
       btn.textContent = tag;
-      btn.addEventListener("click", ()=>cycleTag(tag));
+      btn.dataset.tag = tag;                // stable identity
+      btn.addEventListener("click", ()=>cycleTag(tag, btn)); // pass the button itself
       wrap.appendChild(btn);
     });
     sec.appendChild(wrap);
     container.appendChild(sec);
   });
 }
+
 function renderLists(){
   const render = (id, arr) => {
     const node = $(id); node.innerHTML = "";
@@ -165,6 +167,7 @@ function renderLists(){
   render("optionalList", state.selections.optional);
   render("excludedList", state.selections.excluded);
 }
+
 function renderPartner(){
   const st = $("partnerStatus");
   if (!state.partner){ st.textContent = "— not connected yet —";
@@ -185,8 +188,8 @@ function whichBucket(tag){
   if (state.selections.excluded.includes(tag)) return "excluded";
   return "";
 }
-function cycleTag(tag){
-  // ✅ FIX: capture current state BEFORE removing
+function cycleTag(tag, btnEl){
+  // capture current state BEFORE removing
   const cur = whichBucket(tag);
 
   // remove everywhere
@@ -194,7 +197,7 @@ function cycleTag(tag){
     state.selections[k] = state.selections[k].filter(t => t !== tag);
   });
 
-  // decide next state
+  // next state
   let next = "required";
   if (cur==="required") next="optional";
   else if (cur==="optional") next="excluded";
@@ -202,43 +205,37 @@ function cycleTag(tag){
 
   if (next) state.selections[next] = uniq([...state.selections[next], tag]);
 
-  // refresh UI + persist
-  document.querySelectorAll(".tag").forEach(btn=>{
-    if (btn.textContent === tag){
-      btn.classList.remove("required","optional","excluded");
-      if (next) btn.classList.add(next);
-    }
-  });
+  // update just this button (no brittle text matching)
+  if (btnEl){
+    btnEl.classList.remove("required","optional","excluded");
+    if (next) btnEl.classList.add(next);
+  }
+
   renderLists();
   persist();
   renderSearchLinks();
 }
+
 function removeTag(tag){
   ["required","optional","excluded"].forEach(k=>{
     state.selections[k] = state.selections[k].filter(t => t !== tag);
   });
   renderLists();
-  renderCategories();
+  renderCategories();   // refresh category chip colors
   persist();
   renderSearchLinks();
 }
 
-// ===== Search links =====
+// ===== Search links (no timeNote dependency) =====
 function renderSearchLinks(){
   const q = buildQuery(state.selections);
-  const selectedSort = $("sort").value;
+  const sort = $("sort").value;
   const t = $("time").value;
   const sr = [...state.subs];
 
-  // If a time filter is set, use TOP to actually enforce it (Reddit ignores t= with some sorts)
-  const usedSort = t !== "all" && selectedSort !== "top" ? "top" : selectedSort;
-  $("timeNote").textContent = t !== "all" && selectedSort !== "top"
-    ? "Time filters are most reliable with ‘top’. Using ‘top’ to enforce your time window."
-    : "";
-
-  $("openCombined").onclick = ()=> window.open(buildCombinedUrl(sr, q, usedSort, t), "_blank");
+  $("openCombined").onclick = ()=> window.open(buildCombinedUrl(sr, q, sort, t), "_blank");
   $("copyCombined").onclick = async ()=>{
-    const url = buildCombinedUrl(sr, q, usedSort, t);
+    const url = buildCombinedUrl(sr, q, sort, t);
     try { await navigator.clipboard.writeText(url); alert("Copied!"); }
     catch { prompt("Copy this link:", url); }
   };
@@ -246,7 +243,7 @@ function renderSearchLinks(){
   const list = $("linkList"); list.innerHTML = "";
   sr.sort().forEach(s=>{
     const a = document.createElement("a");
-    a.href = buildSingleUrl(s, q, usedSort, t); a.target = "_blank"; a.rel = "noopener";
+    a.href = buildSingleUrl(s, q, sort, t); a.target = "_blank"; a.rel = "noopener";
     a.textContent = `Open in r/${s}`;
     list.appendChild(a);
   });
@@ -312,15 +309,12 @@ window.addEventListener("DOMContentLoaded", ()=>{
     renderSubs(); renderSearchLinks();
   });
 
-  // Tags UI
   renderCategories();
   renderLists();
 
-  // Search controls
   ["sort","time"].forEach(id=> $(id).addEventListener("change", ()=>renderSearchLinks()));
   renderSearchLinks();
 
-  // Join
   $("joinBtn").addEventListener("click", joinRoom);
 
   if (!state.config.supabaseUrl || !state.config.supabaseAnonKey) {
