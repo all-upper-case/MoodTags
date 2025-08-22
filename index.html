@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mood Tags — Josie & Tai</title>
 
-  <!-- PWA -->
   <meta name="theme-color" content="#0f1216" />
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="data:," />
@@ -14,7 +13,6 @@
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script defer src="script.js"></script>
   <script>
-    // Register service worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -55,7 +53,6 @@
   <section class="card" id="tagsSection">
     <h2>Tags</h2>
     <p class="hint">Tap a tag to cycle: <span class="pill legend required">required</span> → <span class="pill legend optional">optional</span> → <span class="pill legend excluded">excluded</span> → off.</p>
-
     <div id="categories"></div>
   </section>
 
@@ -75,6 +72,18 @@
         <div id="excludedList" class="chips edit"></div>
       </div>
     </div>
+  </section>
+
+  <!-- NEW: Saved posts -->
+  <section class="card">
+    <h2>Saved posts</h2>
+    <div class="custom row">
+      <input id="saveUrl" placeholder="Paste Reddit link (https://www.reddit.com/...)" />
+      <input id="saveTitle" placeholder="Optional title" />
+      <button id="saveBtn" class="primary">Save</button>
+    </div>
+    <div id="savedList" class="saved-list"></div>
+    <p class="hint">Anyone in the room can add or remove items. They sync instantly.</p>
   </section>
 
   <section class="card">
@@ -129,7 +138,6 @@
     </div>
   </section>
 
-  <!-- Config Modal -->
   <dialog id="configDialog">
     <form method="dialog">
       <h2>Setup</h2>
@@ -150,7 +158,7 @@
   </dialog>
 
   <footer>
-    <small>Built for Josie & Tai • No Reddit posts are stored, only your current tag choices.</small>
+    <small>Built for Josie & Tai • No Reddit posts are stored, only your current tag choices and any links you save.</small>
   </footer>
 </body>
 </html>
