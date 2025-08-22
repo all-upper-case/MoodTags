@@ -1,349 +1,329 @@
-// ===== DOM helpers =====
-const $ = (id) => document.getElementById(id);
+// ===== CONFIG: add your Supabase project values in Netlify env =====
+// NETLIFY > Site settings > Environment variables:
+//   VITE_SUPABASE_URL = https://YOURPROJECT.supabase.co
+//   VITE_SUPABASE_ANON_KEY = <your anon public key>
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.3";
 
-// ===== Utility =====
-function uniq(arr) {
-  return Array.from(new Set(arr.map(s => s.trim()).filter(Boolean)));
+const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || window.SUPABASE_URL;
+const SUPABASE_ANON = import.meta.env?.VITE_SUPABASE_ANON_KEY || window.SUPABASE_ANON;
+
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ---------- Subreddit options (you can extend this) ----------
+const DEFAULT_SUBS = [
+  { id: "GWASapphic", label: "r/GWASapphic (audio)" },
+  { id: "DarkSideSapphic", label: "r/DarkSideSapphic (dark content)" },
+  { id: "SapphicScriptGuild", label: "r/SapphicScriptGuild (scripts)" }
+];
+
+// ---------- Tag categories ----------
+const TAG_CATEGORIES = {
+  "Actions": [
+    "kissing","cuddling","spooning","making out","oral","fingering","tribbing",
+    "handholding","strapping on","dirty talk","edging","breath play","teasing","overstimulation"
+  ],
+  "Dynamics": [
+    "gentle","soft","slow burn","rough","praise","degradation","brat","brat tamer",
+    "domme","sub","switch","service top","mommy","good girl","tease & denial"
+  ],
+  "Mood / Aesthetic": [
+    "romantic","comfort","sleepy","cozy","cute","angsty","GFE","soothing","playful","needy",
+    "filthy","intense","mean domme","monster romance","succubus","vampire","witchy"
+  ],
+  "Scenarios": [
+    "girlfriends","friends to lovers","roommates","coworkers","neighbours","gym crush",
+    "first time","reunion","aftercare","massage","bath","shower","phone call","voicemail",
+    "hypnosis","roleplay","nurse","professor","maid","barista","club","hotel"
+  ],
+  "Kinks (consensual-only)": [
+    "bondage","blindfold","handcuffs","spanking","hair pulling","collar","choking (consensual)",
+    "orgasm control","mutual masturbation","marking","bite marks","public risk","exhibitionism",
+    "voyeur","humiliation (consensual)"
+  ],
+  "Format / Meta": [
+    "script fill","improv","ramble","loop","ASMR","soundgasm link","sound effects"
+  ]
+};
+
+// ---------- Helpers ----------
+const nextState = (cur) => {
+  if (cur === "") return "required";
+  if (cur === "required") return "optional";
+  if (cur === "optional") return "excluded";
+  return ""; // back to off
+};
+
+const sortAlpha = (arr) => [...arr].sort((a,b) => a.localeCompare(b, undefined, {sensitivity:"base"}));
+
+// Build reddit title-focused query like: title:"tag1" title:"tag2" (opt1 OR opt2) -title:"bad"
+function buildQuery({ required, optional, excluded }) {
+  const pieces = [];
+  required.forEach(t => pieces.push(`title:"${t}"`));
+  if (optional.length) {
+    const group = optional.map(t => `title:"${t}"`).join(" OR ");
+    pieces.push(`(${group})`);
+  }
+  excluded.forEach(t => pieces.push(`-title:"${t}"`));
+  return pieces.join(" ");
 }
-function quoteTag(tag) {
-  const safe = tag.replace(/"/g, '\\"').trim();
-  return /\s/.test(safe) ? `"${safe}"` : `"${safe}"`;
-}
-function buildQuery({ required = [], optional = [], excluded = [] }) {
-  const parts = [];
-  if (required.length) parts.push(required.map(quoteTag).join(" AND "));
-  if (optional.length) parts.push("(" + optional.map(quoteTag).join(" OR ") + ")");
-  if (excluded.length) parts.push(excluded.map(t => "-" + quoteTag(t)).join(" "));
-  return parts.join(" AND ").trim();
-}
-function redditSearchURL({ subreddit, q, sort = "new", t = "week" }) {
-  const base = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search`;
-  const params = new URLSearchParams();
-  params.set("q", q);
-  params.set("restrict_sr", "1");
-  params.set("sort", sort);
-  params.set("t", t);
+
+// Combined multireddit URL: /r/subA+subB/search?q=...&restrict_sr=on&sort=...&t=...
+function buildCombinedUrl(subs, q, sort, t){
+  const multi = subs.join("+");
+  const base = `https://www.reddit.com/r/${multi}/search/`;
+  const params = new URLSearchParams({
+    q, restrict_sr: "on", sort, t
+  });
   return `${base}?${params.toString()}`;
 }
 
-// ===== Presets (consent-focused; add anything via custom input any time) =====
-const PRESETS = [
-  // Content / format
-  "ASMR","audio","binaural","ear to ear","improv","semi-scripted","script","script fill",
-  "script offer","soft spoken","sound effects","whispers",
+// Single subreddit URL
+function buildSingleUrl(sr, q, sort, t){
+  const base = `https://www.reddit.com/r/${sr}/search/`;
+  const params = new URLSearchParams({
+    q, restrict_sr: "on", sort, t
+  });
+  return `${base}?${params.toString()}`;
+}
 
-  // Vibe / tone
-  "affectionate","aftercare","angsty","comfort","cozy","cute","dirty talk","flirty",
-  "gentle","giggles","grounding","intimate","playful","pillow talk","praise","reassurance",
-  "romantic","slow burn","soothing","supportive","sweet","teasing","tender","wholesome",
+// ---------- State ----------
+let roomId = "";
+let userName = "";
+let knownTags = new Set();
+let tagState = new Map(); // tag -> "", "required", "optional", "excluded"
+let subs = new Set(DEFAULT_SUBS.map(s => s.id));
 
-  // Sapphic / identity markers
-  "F4A","F4F","girlfriend","girlfriend experience","lesbian","sapphic","WLW",
+// Pre-fill known tags
+Object.values(TAG_CATEGORIES).forEach(arr => arr.forEach(t => knownTags.add(t)));
+knownTags = new Set(sortAlpha([...knownTags]));
 
-  // Dynamics / roles (adult, consensual)
-  "bottom","brat","brat tamer","domme","gentle domme","mommy","mommy domme","service top",
-  "soft domme","sub","submissive","switch","top",
-
-  // Actions / intimacy (consensual, adult)
-  "69","cuddles","cuddling","cunnilingus","edging","fingering","foreplay","grinding",
-  "handholding","heartbeat","kissing","makeout","oral","overstimulation","scissoring",
-  "spooning","strap-on","strapon","tribbing",
-
-  // Light kink (consensual, tame)
-  "blindfold","bondage (light)","collar (soft)","handcuffs","praise kink","spanking (light)",
-
-  // Scenarios / settings (adult)
-  "anniversary","artist","barista","bartender","best friend","bookstore","boss","cabin",
-  "camping","classmate","college","confession","coworker","date night","enemy to lover",
-  "enemies to lovers","festival","friends to lovers","gaming night","girlfriend roleplay",
-  "holiday","hotel","library","movie night","neighbor","office","reunion","road trip",
-  "roommate","study date","tutor","tattoo artist",
-
-  // Time / ambience
-  "bedtime","fireplace","goodnight","late night","morning","nap","night in","rain",
-  "rainstorm","shower","sleep aid","storm","thunderstorm","wake up","white noise",
-
-  // Soft reassurance & care
-  "affirmations","anxiety relief","breathing together","comfort you","encouragement",
-  "spoiling you","taking care of you"
-];
-
-// ===== State =====
-const state = {
-  roomId: localStorage.getItem("roomId") || "",
-  userName: localStorage.getItem("userName") || "",
-  config: {
-    supabaseUrl: localStorage.getItem("supabaseUrl") || "",
-    supabaseAnonKey: localStorage.getItem("supabaseAnonKey") || "",
-  },
-  selections: {
-    subreddit: "GWASapphic",
-    required: [],
-    optional: [],
-    excluded: [],
-    sort: "new",
-    time: "week",
-  },
-  partner: null,
-  sb: null,
+// ---------- DOM refs ----------
+const els = {
+  roomId: document.getElementById("roomId"),
+  userName: document.getElementById("userName"),
+  connectBtn: document.getElementById("connectBtn"),
+  connState: document.getElementById("connState"),
+  categories: document.getElementById("categories"),
+  reqList: document.getElementById("reqList"),
+  optList: document.getElementById("optList"),
+  exList: document.getElementById("exList"),
+  sortSel: document.getElementById("sortSel"),
+  timeSel: document.getElementById("timeSel"),
+  linkList: document.getElementById("linkList"),
+  openCombined: document.getElementById("openCombined"),
+  subredditList: document.getElementById("subredditList"),
+  customSub: document.getElementById("customSub"),
+  addSubBtn: document.getElementById("addSubBtn"),
+  installBtn: document.getElementById("installBtn"),
 };
 
-// ===== Helpers for membership & cycling =====
-function tagState(tag) {
-  if (state.selections.required.includes(tag)) return "required";
-  if (state.selections.optional.includes(tag)) return "optional";
-  if (state.selections.excluded.includes(tag)) return "excluded";
-  return "off";
-}
-function cycleTag(tag) {
-  const cur = tagState(tag);
-  // remove from all first
-  ["required", "optional", "excluded"].forEach(k => {
-    state.selections[k] = state.selections[k].filter(t => t !== tag);
+// ---------- Renderers ----------
+function renderSubs() {
+  els.subredditList.innerHTML = "";
+  // ensure unique sorted
+  const all = new Map();
+  DEFAULT_SUBS.forEach(s => all.set(s.id, s.label));
+  // add any custom ones already in 'subs' not in defaults
+  subs.forEach(id => {
+    if (!all.has(id)) all.set(id, `r/${id}`);
   });
-  // move to next state
-  let next = "required";
-  if (cur === "required") next = "optional";
-  else if (cur === "optional") next = "excluded";
-  else if (cur === "excluded") next = "off";
-  if (next !== "off") {
-    state.selections[next] = uniq([...state.selections[next], tag]);
-  }
-  renderLists();
-  renderPresets(); // update chip colors
-  persist();
-}
-
-// ===== UI renderers =====
-function renderPresets() {
-  const container = $("presetContainer");
-  container.innerHTML = "";
-  const list = PRESETS.map(t => t.trim()).filter(Boolean)
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-  list.forEach(tag => {
-    const el = document.createElement("button");
-    el.className = "pill";
-    // color state
-    const st = tagState(tag);
-    if (st === "required") el.classList.add("is-required");
-    if (st === "optional") el.classList.add("is-optional");
-    if (st === "excluded") el.classList.add("is-excluded");
-
-    el.textContent = tag;
-    el.title = "Tap to cycle: Required → Optional → Excluded → Off";
-    el.addEventListener("click", () => cycleTag(tag));
-    container.appendChild(el);
+  [...all.entries()].sort(([a],[b]) => a.localeCompare(b)).forEach(([id,label]) => {
+    const wrap = document.createElement("label");
+    wrap.className = "sub-chip";
+    wrap.innerHTML = `
+      <input type="checkbox" ${subs.has(id) ? "checked" : ""} data-id="${id}"/>
+      <span>${label}</span>
+    `;
+    wrap.querySelector("input").addEventListener("change",(e)=>{
+      const sid = e.target.getAttribute("data-id");
+      if (e.target.checked) subs.add(sid); else subs.delete(sid);
+      renderSearchLinks();
+    });
+    els.subredditList.appendChild(wrap);
   });
 }
 
-function renderLists() {
-  const render = (id, list) => {
-    const container = $(id);
-    container.innerHTML = "";
-    const sorted = (list || []).slice()
-      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    sorted.forEach(tag => {
-      const el = document.createElement("span");
-      el.className = "pill";
-      el.textContent = tag;
-      const x = document.createElement("span");
-      x.className = "remove";
-      x.title = "remove";
-      x.textContent = "✕";
-      x.addEventListener("click", () => removeTag(id, tag));
-      el.appendChild(x);
-      container.appendChild(el);
+function renderCategories() {
+  els.categories.innerHTML = "";
+  Object.entries(TAG_CATEGORIES).forEach(([cat, arr])=>{
+    const sec = document.createElement("div");
+    sec.className = "category";
+    const tags = sortAlpha(arr);
+    sec.innerHTML = `<h3>${cat}</h3>`;
+    const box = document.createElement("div");
+    box.className = "tags";
+    tags.forEach(tag=>{
+      if (!tagState.has(tag)) tagState.set(tag, "");
+      const btn = document.createElement("button");
+      btn.className = `tag ${tagState.get(tag)}`;
+      btn.textContent = tag;
+      btn.addEventListener("click", () => toggleTag(tag));
+      box.appendChild(btn);
+    });
+    sec.appendChild(box);
+    els.categories.appendChild(sec);
+  });
+}
+
+function renderSelected() {
+  const req=[], opt=[], ex=[];
+  tagState.forEach((v,k)=>{
+    if (v==="required") req.push(k);
+    else if (v==="optional") opt.push(k);
+    else if (v==="excluded") ex.push(k);
+  });
+  const chipify = (arr, cls) => {
+    return sortAlpha(arr).map(t=>{
+      const span = document.createElement("span");
+      span.className = "chip";
+      span.textContent = t;
+      span.addEventListener("click", ()=>toggleTag(t));
+      return span;
     });
   };
-  render("requiredList", state.selections.required);
-  render("optionalList", state.selections.optional);
-  render("excludedList", state.selections.excluded);
+  els.reqList.replaceChildren(...chipify(req,"required"));
+  els.optList.replaceChildren(...chipify(opt,"optional"));
+  els.exList.replaceChildren(...chipify(ex,"excluded"));
 }
 
-function renderPartner() {
-  const status = $("partnerStatus");
-  if (!state.partner) {
-    status.textContent = "— not connected yet —";
-    ["p_required","p_optional","p_excluded"].forEach(id => $(id).innerHTML="");
-    return;
-  }
-  status.textContent = `${state.partner.user_name} @ ${new Date(state.partner.updated_at).toLocaleString()}`;
-  const mk = (arr) => (arr || []).slice()
-    .sort((a,b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-    .map(t => `<span class="pill">${t}</span>`).join(" ");
-  $("p_required").innerHTML = mk(state.partner.required_tags);
-  $("p_optional").innerHTML = mk(state.partner.optional_tags);
-  $("p_excluded").innerHTML = mk(state.partner.excluded_tags);
-}
-
-// ===== Mutators for bottom chips =====
-function removeTag(fromListId, tag) {
-  const map = { requiredList: "required", optionalList: "optional", excludedList: "excluded" };
-  const key = map[fromListId];
-  state.selections[key] = state.selections[key].filter(t => t !== tag);
-  renderLists();
-  renderPresets(); // keep preset colors in sync
-  persist();
-}
-function addTagTo(bucket, tag) {
-  // used by custom input (not presets)
-  const key = bucket === "required" ? "required" : bucket === "optional" ? "optional" : "excluded";
-  // clear from other buckets first to avoid duplicates across groups
-  ["required","optional","excluded"].forEach(k => {
-    state.selections[k] = state.selections[k].filter(t => t !== tag);
+function renderSearchLinks() {
+  const req=[], opt=[], ex=[];
+  tagState.forEach((v,k)=>{
+    if (v==="required") req.push(k);
+    else if (v==="optional") opt.push(k);
+    else if (v==="excluded") ex.push(k);
   });
-  state.selections[key] = uniq([...state.selections[key], tag]);
-  renderLists();
-  renderPresets();
-  persist();
-}
+  const q = buildQuery({required:req, optional:opt, excluded:ex});
+  const sort = els.sortSel.value;
+  const t = els.timeSel.value;
+  const sr = [...subs];
 
-// ===== Supabase realtime =====
-async function ensureSupabase() {
-  if (!state.config.supabaseUrl || !state.config.supabaseAnonKey) return null;
-  if (state.sb) return state.sb;
-  state.sb = window.supabase.createClient(state.config.supabaseUrl, state.config.supabaseAnonKey, {
-    auth: { persistSession: false },
-    realtime: { params: { eventsPerSecond: 3 } }
-  });
-  return state.sb;
-}
-
-async function persist() {
-  const sb = await ensureSupabase();
-  if (!sb || !state.roomId || !state.userName) return;
-  const payload = {
-    room_id: state.roomId,
-    user_name: state.userName,
-    subreddit: state.selections.subreddit,
-    required_tags: state.selections.required,
-    optional_tags: state.selections.optional,
-    excluded_tags: state.selections.excluded,
-    sort: state.selections.sort,
-    timeframe: state.selections.time,
-    updated_at: new Date().toISOString(),
-  };
-  await sb.from("selections").upsert(payload, { onConflict: "room_id,user_name" });
-}
-
-async function joinRoom() {
-  $("tagsSection").classList.add("hidden");
-  $("partnerSection").classList.add("hidden");
-
-  state.roomId = $("roomId").value.trim();
-  state.userName = $("userName").value.trim();
-  localStorage.setItem("roomId", state.roomId);
-  localStorage.setItem("userName", state.userName);
-
-  state.selections.subreddit = $("subreddit").value.trim() || "GWASapphic";
-  await persist();
-
-  $("tagsSection").classList.remove("hidden");
-  $("partnerSection").classList.remove("hidden");
-
-  const sb = await ensureSupabase();
-  if (!sb) return;
-
-  sb.channel(`room:${state.roomId}`)
-    .on("postgres_changes", {
-      event: "*",
-      schema: "public",
-      table: "selections",
-      filter: `room_id=eq.${state.roomId}`,
-    }, (payload) => {
-      const row = payload.new;
-      if (!row || row.user_name === state.userName) return;
-      state.partner = row;
-      renderPartner();
-    })
-    .subscribe();
-
-  const { data } = await sb.from("selections").select("*").eq("room_id", state.roomId);
-  state.partner = data ? data.find(r => r.user_name !== state.userName) || null : null;
-  renderPartner();
-}
-
-// ===== Event wiring =====
-window.addEventListener("DOMContentLoaded", () => {
-  $("roomId").value = state.roomId;
-  $("userName").value = state.userName;
-
-  $("configBtn").addEventListener("click", () => {
-    $("sbUrl").value = state.config.supabaseUrl;
-    $("sbKey").value = state.config.supabaseAnonKey;
-    $("configDialog").showModal();
-  });
-  $("saveConfig").addEventListener("click", () => {
-    const url = $("sbUrl").value.trim();
-    const key = $("sbKey").value.trim();
-    if (url && key) {
-      state.config.supabaseUrl = url;
-      state.config.supabaseAnonKey = key;
-      localStorage.setItem("supabaseUrl", url);
-      localStorage.setItem("supabaseAnonKey", key);
-      $("configDialog").close();
-      state.sb = null;
-      ensureSupabase();
-    }
-  });
-
-  $("subreddit").addEventListener("input", e => {
-    state.selections.subreddit = e.target.value.trim();
-    persist();
-  });
-  $("sort").addEventListener("change", e => {
-    state.selections.sort = e.target.value;
-    persist();
-  });
-  $("time").addEventListener("change", e => {
-    state.selections.time = e.target.value;
-    persist();
-  });
-
-  // Custom add
-  $("addCustom").addEventListener("click", () => {
-    const tag = $("customTag").value.trim();
-    const bucket = $("customBucket").value;
-    if (!tag) return;
-    addTagTo(bucket, tag);
-    $("customTag").value = "";
-  });
-  $("customTag").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); $("addCustom").click(); }
-  });
-
-  $("joinBtn").addEventListener("click", joinRoom);
-
-  $("openReddit").addEventListener("click", () => {
-    const q = buildQuery(state.selections);
-    const url = redditSearchURL({
-      subreddit: state.selections.subreddit,
-      q,
-      sort: state.selections.sort,
-      t: state.selections.time
-    });
+  // combined button
+  els.openCombined.onclick = () => {
+    const url = buildCombinedUrl(sr, q, sort, t);
     window.open(url, "_blank");
+  };
+
+  // individual links list
+  els.linkList.innerHTML = "";
+  sr.sort().forEach(s=>{
+    const a = document.createElement("a");
+    a.href = buildSingleUrl(s, q, sort, t);
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = `Open in r/${s}`;
+    els.linkList.appendChild(a);
   });
-  $("copyLink").addEventListener("click", async () => {
-    const q = buildQuery(state.selections);
-    const url = redditSearchURL({
-      subreddit: state.selections.subreddit,
-      q,
-      sort: state.selections.sort,
-      t: state.selections.time
-    });
-    try {
-      await navigator.clipboard.writeText(url);
-      alert("Search link copied!");
-    } catch {
-      prompt("Copy this link:", url);
+}
+
+// ---------- Tag toggle & persistence ----------
+async function toggleTag(tag){
+  const newState = nextState(tagState.get(tag) || "");
+  tagState.set(tag, newState);
+
+  // update UI buttons
+  document.querySelectorAll(".tag").forEach(btn=>{
+    if (btn.textContent === tag) {
+      btn.classList.remove("required","optional","excluded");
+      if (newState) btn.classList.add(newState);
     }
   });
+  renderSelected();
+  renderSearchLinks();
 
-  renderPresets();
-  renderLists();
+  // upsert to Supabase
+  if (!roomId || !userName) return;
+  await sb.from("selections").upsert({
+    room_id: roomId,
+    user_name: userName,
+    tag,
+    state: newState
+  }, { onConflict: "room_id,tag,user_name" });
+}
 
-  if (!state.config.supabaseUrl || !state.config.supabaseAnonKey) {
-    $("configDialog").showModal();
+// ---------- Realtime & load ----------
+let channel = null;
+
+async function connectRoom(){
+  roomId = els.roomId.value.trim();
+  userName = els.userName.value.trim() || "anon";
+  if (!roomId){ els.connState.textContent = "Enter a room id."; return; }
+
+  els.connState.textContent = "Connecting…";
+
+  // Fetch existing selections
+  const { data } = await sb.from("selections")
+    .select("tag,state")
+    .eq("room_id", roomId)
+    .order("tag", { ascending: true });
+
+  // merge into local state
+  if (data) {
+    data.forEach(({tag,state})=>{
+      if (!tagState.has(tag)) tagState.set(tag, "");
+      tagState.set(tag, state || "");
+    });
+    renderCategories();
+    renderSelected();
+    renderSearchLinks();
+  }
+
+  // subscribe to realtime room
+  if (channel) sb.removeChannel(channel);
+  channel = sb
+    .channel(`room-${roomId}`)
+    .on("postgres_changes",
+      { event: "*", schema: "public", table: "selections", filter: `room_id=eq.${roomId}` },
+      (payload)=>{
+        const { tag, state } = payload.new;
+        tagState.set(tag, state || "");
+        // Update a single button quickly
+        document.querySelectorAll(".tag").forEach(btn=>{
+          if (btn.textContent === tag){
+            btn.classList.remove("required","optional","excluded");
+            if (state) btn.classList.add(state);
+          }
+        });
+        renderSelected();
+        renderSearchLinks();
+      }
+    ).subscribe(async (status)=>{
+      els.connState.textContent = status === "SUBSCRIBED"
+        ? `Connected to room “${roomId}” as ${userName}.`
+        : `Status: ${status}`;
+    });
+}
+
+// ---------- Sub add ----------
+els.addSubBtn.addEventListener("click", ()=>{
+  const raw = els.customSub.value.trim().replace(/^r\//i,"");
+  if (!raw) return;
+  subs.add(raw);
+  els.customSub.value = "";
+  renderSubs();
+  renderSearchLinks();
+});
+
+// ---------- Wire up ----------
+els.connectBtn.addEventListener("click", connectRoom);
+renderSubs();
+renderCategories();
+renderSelected();
+renderSearchLinks();
+
+// ---------- PWA install ----------
+let deferredPrompt;
+window.addEventListener("beforeinstallprompt",(e)=>{
+  e.preventDefault();
+  deferredPrompt = e;
+  els.installBtn.hidden = false;
+});
+els.installBtn.addEventListener("click", async ()=>{
+  els.installBtn.hidden = true;
+  if (deferredPrompt){
+    deferredPrompt.prompt();
+    deferredPrompt = null;
   }
 });
+
+// If you didn’t add service-worker & manifest, it’ll still work—just without installability.
