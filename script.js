@@ -26,7 +26,7 @@ function redditSearchURL({ subreddit, q, sort = "new", t = "week" }) {
   return `${base}?${params.toString()}`;
 }
 
-// ===== Presets (consent-focused; you can add anything in the UI as custom) =====
+// ===== Presets (consent-focused; add anything via custom input any time) =====
 const PRESETS = [
   // Content / format
   "ASMR","audio","binaural","ear to ear","improv","semi-scripted","script","script fill",
@@ -53,11 +53,11 @@ const PRESETS = [
   "blindfold","bondage (light)","collar (soft)","handcuffs","praise kink","spanking (light)",
 
   // Scenarios / settings (adult)
-  "anniversary","artist","barista","bartender","best friend","bookstore","boss",
-  "cabin","camping","classmate","college","confession","coworker","date night",
-  "enemy to lover","enemies to lovers","festival","friends to lovers","gaming night",
-  "girlfriend roleplay","holiday","hotel","library","movie night","neighbor","office",
-  "reunion","road trip","roommate","study date","tutor","tattoo artist",
+  "anniversary","artist","barista","bartender","best friend","bookstore","boss","cabin",
+  "camping","classmate","college","confession","coworker","date night","enemy to lover",
+  "enemies to lovers","festival","friends to lovers","gaming night","girlfriend roleplay",
+  "holiday","hotel","library","movie night","neighbor","office","reunion","road trip",
+  "roommate","study date","tutor","tattoo artist",
 
   // Time / ambience
   "bedtime","fireplace","goodnight","late night","morning","nap","night in","rain",
@@ -88,6 +88,32 @@ const state = {
   sb: null,
 };
 
+// ===== Helpers for membership & cycling =====
+function tagState(tag) {
+  if (state.selections.required.includes(tag)) return "required";
+  if (state.selections.optional.includes(tag)) return "optional";
+  if (state.selections.excluded.includes(tag)) return "excluded";
+  return "off";
+}
+function cycleTag(tag) {
+  const cur = tagState(tag);
+  // remove from all first
+  ["required", "optional", "excluded"].forEach(k => {
+    state.selections[k] = state.selections[k].filter(t => t !== tag);
+  });
+  // move to next state
+  let next = "required";
+  if (cur === "required") next = "optional";
+  else if (cur === "optional") next = "excluded";
+  else if (cur === "excluded") next = "off";
+  if (next !== "off") {
+    state.selections[next] = uniq([...state.selections[next], tag]);
+  }
+  renderLists();
+  renderPresets(); // update chip colors
+  persist();
+}
+
 // ===== UI renderers =====
 function renderPresets() {
   const container = $("presetContainer");
@@ -97,11 +123,15 @@ function renderPresets() {
   list.forEach(tag => {
     const el = document.createElement("button");
     el.className = "pill";
+    // color state
+    const st = tagState(tag);
+    if (st === "required") el.classList.add("is-required");
+    if (st === "optional") el.classList.add("is-optional");
+    if (st === "excluded") el.classList.add("is-excluded");
+
     el.textContent = tag;
-    el.addEventListener("click", () => {
-      const bucket = $("pickerMode").value;
-      addTagTo(bucket, tag);
-    });
+    el.title = "Tap to cycle: Required → Optional → Excluded → Off";
+    el.addEventListener("click", () => cycleTag(tag));
     container.appendChild(el);
   });
 }
@@ -146,18 +176,25 @@ function renderPartner() {
   $("p_excluded").innerHTML = mk(state.partner.excluded_tags);
 }
 
-// ===== Mutators =====
-function addTagTo(bucket, tag) {
-  const key = bucket === "required" ? "required" : bucket === "optional" ? "optional" : "excluded";
-  state.selections[key] = uniq([...state.selections[key], tag]);
-  renderLists();
-  persist();
-}
+// ===== Mutators for bottom chips =====
 function removeTag(fromListId, tag) {
   const map = { requiredList: "required", optionalList: "optional", excludedList: "excluded" };
   const key = map[fromListId];
   state.selections[key] = state.selections[key].filter(t => t !== tag);
   renderLists();
+  renderPresets(); // keep preset colors in sync
+  persist();
+}
+function addTagTo(bucket, tag) {
+  // used by custom input (not presets)
+  const key = bucket === "required" ? "required" : bucket === "optional" ? "optional" : "excluded";
+  // clear from other buckets first to avoid duplicates across groups
+  ["required","optional","excluded"].forEach(k => {
+    state.selections[k] = state.selections[k].filter(t => t !== tag);
+  });
+  state.selections[key] = uniq([...state.selections[key], tag]);
+  renderLists();
+  renderPresets();
   persist();
 }
 
@@ -207,8 +244,7 @@ async function joinRoom() {
   const sb = await ensureSupabase();
   if (!sb) return;
 
-  const channel = sb
-    .channel(`room:${state.roomId}`)
+  sb.channel(`room:${state.roomId}`)
     .on("postgres_changes", {
       event: "*",
       schema: "public",
@@ -216,19 +252,15 @@ async function joinRoom() {
       filter: `room_id=eq.${state.roomId}`,
     }, (payload) => {
       const row = payload.new;
-      if (!row) return;
-      if (row.user_name === state.userName) return;
+      if (!row || row.user_name === state.userName) return;
       state.partner = row;
       renderPartner();
     })
     .subscribe();
 
   const { data } = await sb.from("selections").select("*").eq("room_id", state.roomId);
-  if (data) {
-    const partnerRow = data.find(r => r.user_name !== state.userName);
-    state.partner = partnerRow || null;
-    renderPartner();
-  }
+  state.partner = data ? data.find(r => r.user_name !== state.userName) || null : null;
+  renderPartner();
 }
 
 // ===== Event wiring =====
@@ -268,6 +300,7 @@ window.addEventListener("DOMContentLoaded", () => {
     persist();
   });
 
+  // Custom add
   $("addCustom").addEventListener("click", () => {
     const tag = $("customTag").value.trim();
     const bucket = $("customBucket").value;
