@@ -29,12 +29,8 @@ function buildSingleUrl(sr, q, sort, t){
   return `${base}?${p.toString()}`;
 }
 
-// ===== Preset subs (you can add more any time) =====
-const DEFAULT_SUBS = [
-  "GWASapphic",        // audio
-  "DarkSideSapphic",   // dark content counterpart
-  "SapphicScriptGuild" // scripts
-];
+// ===== Preset subs =====
+const DEFAULT_SUBS = ["GWASapphic","DarkSideSapphic","SapphicScriptGuild"];
 
 // ===== Categories =====
 const TAG_CATEGORIES = {
@@ -74,7 +70,6 @@ const state = {
     supabaseAnonKey: localStorage.getItem("supabaseAnonKey") || "",
   },
   selections: {
-    // arrays match your Supabase schema
     required: [],
     optional: [],
     excluded: [],
@@ -102,7 +97,7 @@ async function persist(){
   const payload = {
     room_id: state.roomId,
     user_name: state.userName,
-    subreddit: "multi", // placeholder; we build multi-subreddit link client-side
+    subreddit: "multi",
     required_tags: state.selections.required,
     optional_tags: state.selections.optional,
     excluded_tags: state.selections.excluded,
@@ -191,16 +186,20 @@ function whichBucket(tag){
   return "";
 }
 function cycleTag(tag){
+  // ✅ FIX: capture current state BEFORE removing
+  const cur = whichBucket(tag);
+
   // remove everywhere
   ["required","optional","excluded"].forEach(k=>{
     state.selections[k] = state.selections[k].filter(t => t !== tag);
   });
-  // add to next
-  const cur = whichBucket(tag);
+
+  // decide next state
   let next = "required";
   if (cur==="required") next="optional";
   else if (cur==="optional") next="excluded";
-  else if (cur==="excluded") next="";
+  else if (cur==="excluded") next=""; // off
+
   if (next) state.selections[next] = uniq([...state.selections[next], tag]);
 
   // refresh UI + persist
@@ -227,13 +226,19 @@ function removeTag(tag){
 // ===== Search links =====
 function renderSearchLinks(){
   const q = buildQuery(state.selections);
-  const sort = $("sort").value;
+  const selectedSort = $("sort").value;
   const t = $("time").value;
   const sr = [...state.subs];
 
-  $("openCombined").onclick = ()=> window.open(buildCombinedUrl(sr, q, sort, t), "_blank");
+  // If a time filter is set, use TOP to actually enforce it (Reddit ignores t= with some sorts)
+  const usedSort = t !== "all" && selectedSort !== "top" ? "top" : selectedSort;
+  $("timeNote").textContent = t !== "all" && selectedSort !== "top"
+    ? "Time filters are most reliable with ‘top’. Using ‘top’ to enforce your time window."
+    : "";
+
+  $("openCombined").onclick = ()=> window.open(buildCombinedUrl(sr, q, usedSort, t), "_blank");
   $("copyCombined").onclick = async ()=>{
-    const url = buildCombinedUrl(sr, q, sort, t);
+    const url = buildCombinedUrl(sr, q, usedSort, t);
     try { await navigator.clipboard.writeText(url); alert("Copied!"); }
     catch { prompt("Copy this link:", url); }
   };
@@ -241,7 +246,7 @@ function renderSearchLinks(){
   const list = $("linkList"); list.innerHTML = "";
   sr.sort().forEach(s=>{
     const a = document.createElement("a");
-    a.href = buildSingleUrl(s, q, sort, t); a.target = "_blank"; a.rel = "noopener";
+    a.href = buildSingleUrl(s, q, usedSort, t); a.target = "_blank"; a.rel = "noopener";
     a.textContent = `Open in r/${s}`;
     list.appendChild(a);
   });
@@ -258,7 +263,6 @@ async function joinRoom(){
   const sb = await ensureSupabase();
   if (!sb){ $("connState").textContent = "Open Config and paste Supabase URL & anon key."; return; }
 
-  // Subscribe to room updates
   sb.channel(`room:${state.roomId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "selections", filter: `room_id=eq.${state.roomId}` },
       (payload)=>{
@@ -268,23 +272,19 @@ async function joinRoom(){
       })
     .subscribe((s)=> $("connState").textContent = (s==="SUBSCRIBED" ? `Connected as ${state.userName}.` : `Status: ${s}`));
 
-  // Pull partner snapshot
   const { data } = await sb.from("selections").select("*").eq("room_id", state.roomId);
   if (data) {
     const partnerRow = data.find(r => r.user_name !== state.userName) || null;
     state.partner = partnerRow; renderPartner();
   }
-  // Save my first state
   persist();
 }
 
 // ===== Wire up =====
 window.addEventListener("DOMContentLoaded", ()=>{
-  // Prefill saved id/name
   $("roomId").value = state.roomId;
   $("userName").value = state.userName;
 
-  // Config
   $("configBtn").addEventListener("click", ()=>{
     $("sbUrl").value = state.config.supabaseUrl;
     $("sbKey").value = state.config.supabaseAnonKey;
@@ -303,7 +303,6 @@ window.addEventListener("DOMContentLoaded", ()=>{
     }
   });
 
-  // Subs UI
   renderSubs();
   $("addSubBtn").addEventListener("click", ()=>{
     const raw = $("customSub").value.trim().replace(/^r\//i,"");
@@ -324,7 +323,6 @@ window.addEventListener("DOMContentLoaded", ()=>{
   // Join
   $("joinBtn").addEventListener("click", joinRoom);
 
-  // Auto-open Config if keys missing
   if (!state.config.supabaseUrl || !state.config.supabaseAnonKey) {
     $("configDialog").showModal();
   }
