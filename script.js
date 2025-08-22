@@ -16,7 +16,7 @@ function buildQuery({ required=[], optional=[], excluded=[] }){
   return parts.join(" ");
 }
 
-// Multireddit + single-subreddit URLs
+// Multireddit + single URLs
 function buildCombinedUrl(subs, q, sort, t){
   const multi = subs.join("+");
   const base = `https://www.reddit.com/r/${multi}/search`;
@@ -29,16 +29,13 @@ function buildSingleUrl(sr, q, sort, t){
   return `${base}?${p.toString()}`;
 }
 
-// ===== Preset subs (added a few generals too; you can uncheck them) =====
+// ===== Preset subs =====
 const DEFAULT_SUBS = [
-  "GWASapphic",        // sapphic audio
-  "DarkSideSapphic",   // sapphic dark content
-  "SapphicScriptGuild",// sapphic scripts
-  "GoneWildAudio",     // general audio (not sapphic-only)
-  "ScriptGuild"        // general scripts (not sapphic-only)
+  "GWASapphic","DarkSideSapphic","SapphicScriptGuild",
+  "GoneWildAudio","ScriptGuild"
 ];
 
-// ===== Categories =====
+// ===== Categories (presets) =====
 const TAG_CATEGORIES = {
   "Actions": [
     "kissing","cuddling","spooning","making out","oral","fingering","tribbing",
@@ -67,6 +64,9 @@ const TAG_CATEGORIES = {
   ]
 };
 
+// A quick set of all preset tags for “Custom” detection
+const PRESET_SET = new Set(Object.values(TAG_CATEGORIES).flat());
+
 // ===== State =====
 const state = {
   roomId: localStorage.getItem("roomId") || "",
@@ -83,7 +83,7 @@ const state = {
     time: "week"
   },
   subs: new Set(DEFAULT_SUBS),
-  saved: [],         // <— saved posts for the room
+  saved: [],
   partner: null,
   sb: null,
   channels: []
@@ -116,13 +116,12 @@ async function persist(){
   await sb.from("selections").upsert(payload, { onConflict: "room_id,user_name" });
 }
 
-// ===== Saved posts (CRUD) =====
+// ===== Saved posts (unchanged from your working version) =====
 async function loadSaved(){
   const sb = await ensureSupabase();
   if (!sb || !state.roomId) return;
   const { data } = await sb.from("saved_links")
-    .select("*")
-    .eq("room_id", state.roomId)
+    .select("*").eq("room_id", state.roomId)
     .order("created_at", { ascending: false });
   state.saved = data || [];
   renderSaved();
@@ -137,7 +136,6 @@ async function addSaved(){
   const { error } = await sb.from("saved_links").insert(payload);
   if (error && !/duplicate key/i.test(String(error.message))) { alert("Could not save link."); return; }
   $("saveUrl").value = ""; $("saveTitle").value = "";
-  // Re-load (realtime will also kick in)
   loadSaved();
 }
 async function deleteSaved(id){
@@ -155,7 +153,6 @@ function renderSaved(){
   state.saved.forEach(row=>{
     const item = document.createElement("div");
     item.className = "saved-item";
-
     const main = document.createElement("div");
     main.className = "saved-main";
     const a = document.createElement("a");
@@ -165,19 +162,69 @@ function renderSaved(){
     meta.className = "saved-meta";
     meta.textContent = `by ${row.user_name} • ${new Date(row.created_at).toLocaleString()}`;
     main.appendChild(a); main.appendChild(meta);
-
     const del = document.createElement("button");
-    del.className = "danger";
-    del.textContent = "Remove";
+    del.className = "danger"; del.textContent = "Remove";
     del.addEventListener("click", ()=>deleteSaved(row.id));
-
-    item.appendChild(main);
-    item.appendChild(del);
+    item.appendChild(main); item.appendChild(del);
     list.appendChild(item);
   });
 }
 
-// ===== UI: subs, categories, lists =====
+// ===== Tags: membership, cycling, custom add =====
+function whichBucket(tag){
+  if (state.selections.required.includes(tag)) return "required";
+  if (state.selections.optional.includes(tag)) return "optional";
+  if (state.selections.excluded.includes(tag)) return "excluded";
+  return "";
+}
+function cycleTag(tag, btnEl){
+  const cur = whichBucket(tag);
+  ["required","optional","excluded"].forEach(k=>{
+    state.selections[k] = state.selections[k].filter(t => t !== tag);
+  });
+  let next = "required";
+  if (cur==="required") next="optional";
+  else if (cur==="optional") next="excluded";
+  else if (cur==="excluded") next="";
+  if (next) state.selections[next] = uniq([...state.selections[next], tag]);
+  if (btnEl){
+    btnEl.classList.remove("required","optional","excluded");
+    if (next) btnEl.classList.add(next);
+  }
+  renderLists();
+  persist();
+  renderSearchLinks();
+}
+
+// NEW: add a custom tag to a chosen bucket
+function addCustomTag(){
+  const tag = $("customTag").value.trim();
+  const bucket = $("customBucket").value;
+  if (!tag) return;
+
+  // Remove from all buckets, then add to chosen one
+  ["required","optional","excluded"].forEach(k=>{
+    state.selections[k] = state.selections[k].filter(t => t.toLowerCase() !== tag.toLowerCase());
+  });
+  state.selections[bucket] = uniq([...state.selections[bucket], tag]);
+
+  $("customTag").value = "";
+  renderLists();
+  renderCategories(); // so it appears under "Custom (this room)" with cycle behavior
+  persist();
+  renderSearchLinks();
+}
+function removeTag(tag){
+  ["required","optional","excluded"].forEach(k=>{
+    state.selections[k] = state.selections[k].filter(t => t !== tag);
+  });
+  renderLists();
+  renderCategories();
+  persist();
+  renderSearchLinks();
+}
+
+// ===== Rendering: subs, categories, lists, links =====
 function renderSubs(){
   const list = $("subredditList");
   list.innerHTML = "";
@@ -199,6 +246,8 @@ function renderSubs(){
 function renderCategories(){
   const container = $("categories");
   container.innerHTML = "";
+
+  // Preset categories
   Object.entries(TAG_CATEGORIES).forEach(([name, arr])=>{
     const sec = document.createElement("div");
     sec.className = "category";
@@ -215,6 +264,27 @@ function renderCategories(){
     sec.appendChild(wrap);
     container.appendChild(sec);
   });
+
+  // NEW: Custom tags (anything currently selected that isn't a preset)
+  const selectedAll = new Set([...state.selections.required, ...state.selections.optional, ...state.selections.excluded]);
+  const custom = [...selectedAll].filter(t => !PRESET_SET.has(t));
+  if (custom.length){
+    const sec = document.createElement("div");
+    sec.className = "category";
+    const h = document.createElement("h3"); h.textContent = "Custom (this room)";
+    sec.appendChild(h);
+    const wrap = document.createElement("div"); wrap.className = "tags";
+    sortAlpha(custom).forEach(tag=>{
+      const btn = document.createElement("button");
+      btn.className = "tag " + whichBucket(tag);
+      btn.textContent = tag;
+      btn.dataset.tag = tag;
+      btn.addEventListener("click", ()=>cycleTag(tag, btn));
+      wrap.appendChild(btn);
+    });
+    sec.appendChild(wrap);
+    container.appendChild(sec);
+  }
 }
 function renderLists(){
   const render = (id, arr) => {
@@ -235,62 +305,6 @@ function renderLists(){
   render("optionalList", state.selections.optional);
   render("excludedList", state.selections.excluded);
 }
-
-// ===== Partner view =====
-function renderPartner(){
-  const st = $("partnerStatus");
-  if (!state.partner){ st.textContent = "— not connected yet —";
-    ["p_required","p_optional","p_excluded"].forEach(id => $(id).innerHTML="");
-    return;
-  }
-  st.textContent = `${state.partner.user_name} @ ${new Date(state.partner.updated_at).toLocaleString()}`;
-  const mk = (a)=> sortAlpha(a||[]).map(t=>`<span class="pill">${t}</span>`).join(" ");
-  $("p_required").innerHTML = mk(state.partner.required_tags);
-  $("p_optional").innerHTML = mk(state.partner.optional_tags);
-  $("p_excluded").innerHTML = mk(state.partner.excluded_tags);
-}
-
-// ===== Tag membership & cycling =====
-function whichBucket(tag){
-  if (state.selections.required.includes(tag)) return "required";
-  if (state.selections.optional.includes(tag)) return "optional";
-  if (state.selections.excluded.includes(tag)) return "excluded";
-  return "";
-}
-function cycleTag(tag, btnEl){
-  const cur = whichBucket(tag); // capture before removing
-
-  ["required","optional","excluded"].forEach(k=>{
-    state.selections[k] = state.selections[k].filter(t => t !== tag);
-  });
-
-  let next = "required";
-  if (cur==="required") next="optional";
-  else if (cur==="optional") next="excluded";
-  else if (cur==="excluded") next=""; // off
-
-  if (next) state.selections[next] = uniq([...state.selections[next], tag]);
-
-  if (btnEl){
-    btnEl.classList.remove("required","optional","excluded");
-    if (next) btnEl.classList.add(next);
-  }
-
-  renderLists();
-  persist();
-  renderSearchLinks();
-}
-function removeTag(tag){
-  ["required","optional","excluded"].forEach(k=>{
-    state.selections[k] = state.selections[k].filter(t => t !== tag);
-  });
-  renderLists();
-  renderCategories();
-  persist();
-  renderSearchLinks();
-}
-
-// ===== Search links =====
 function renderSearchLinks(){
   const q = buildQuery(state.selections);
   const sort = $("sort").value;
@@ -324,11 +338,9 @@ async function joinRoom(){
   const sb = await ensureSupabase();
   if (!sb){ $("connState").textContent = "Open Config and paste Supabase URL & anon key."; return; }
 
-  // clean old channels
   state.channels.forEach(ch => sb.removeChannel(ch));
   state.channels = [];
 
-  // selections realtime (partner mood)
   const ch1 = sb.channel(`room:${state.roomId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "selections", filter: `room_id=eq.${state.roomId}` },
       (payload)=>{
@@ -339,14 +351,12 @@ async function joinRoom(){
     .subscribe();
   state.channels.push(ch1);
 
-  // saved links realtime
   const ch2 = sb.channel(`saved:${state.roomId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "saved_links", filter: `room_id=eq.${state.roomId}` },
       ()=> loadSaved())
     .subscribe();
   state.channels.push(ch2);
 
-  // initial loads
   const { data } = await sb.from("selections").select("*").eq("room_id", state.roomId);
   state.partner = data ? data.find(r => r.user_name !== state.userName) || null : null;
   renderPartner();
@@ -379,10 +389,14 @@ window.addEventListener("DOMContentLoaded", ()=>{
     }
   });
 
-  // Saved posts actions
+  // Saved posts
   $("saveBtn").addEventListener("click", addSaved);
   $("saveUrl").addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ e.preventDefault(); addSaved(); }});
   $("saveTitle").addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ e.preventDefault(); addSaved(); }});
+
+  // Custom tag add
+  $("addCustom").addEventListener("click", addCustomTag);
+  $("customTag").addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ e.preventDefault(); addCustomTag(); }});
 
   renderSubs();
   $("addSubBtn").addEventListener("click", ()=>{
