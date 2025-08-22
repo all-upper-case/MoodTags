@@ -4,9 +4,23 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mood Tags — Josie & Tai</title>
+
+  <!-- PWA bits -->
+  <meta name="theme-color" content="#0f1216" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="data:," /><!-- tiny empty favicon to silence 404s -->
+
   <link rel="stylesheet" href="styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script defer src="script.js"></script>
+  <script>
+    // Register service worker for PWA/offline
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
+    }
+  </script>
 </head>
 <body>
   <header>
@@ -42,14 +56,7 @@
       <div class="pill legend excluded">Excluded</div>
     </div>
 
-    <div class="picker-mode row">
-      <span>Tap preset to add as:</span>
-      <select id="pickerMode">
-        <option value="required">Required (AND)</option>
-        <option value="optional">Optional (OR group)</option>
-        <option value="excluded">Excluded (NOT)</option>
-      </select>
-    </div>
+    <p class="hint">Tap a preset to cycle: <b>Required → Optional → Excluded → Off</b>.</p>
 
     <div class="presets">
       <h3>Presets</h3>
