@@ -1,4 +1,4 @@
-const CACHE = "moodtags-v5";
+const CACHE = "moodtags-v6";
 const ASSETS = ["index.html", "styles.css", "script.js", "manifest.json"];
 
 self.addEventListener("install", (e) => {
