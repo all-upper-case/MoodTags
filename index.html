@@ -53,6 +53,18 @@
   <section class="card" id="tagsSection">
     <h2>Tags</h2>
     <p class="hint">Tap a tag to cycle: <span class="pill legend required">required</span> → <span class="pill legend optional">optional</span> → <span class="pill legend excluded">excluded</span> → off.</p>
+
+    <!-- NEW: custom tag input -->
+    <div class="custom row wrap">
+      <input id="customTag" placeholder="Add custom tag and press Enter" />
+      <select id="customBucket" aria-label="Bucket">
+        <option value="required">→ Required</option>
+        <option value="optional">→ Optional</option>
+        <option value="excluded">→ Excluded</option>
+      </select>
+      <button id="addCustom">Add</button>
+    </div>
+
     <div id="categories"></div>
   </section>
 
@@ -74,7 +86,7 @@
     </div>
   </section>
 
-  <!-- NEW: Saved posts -->
+  <!-- Saved posts section (unchanged) -->
   <section class="card">
     <h2>Saved posts</h2>
     <div class="custom row">
